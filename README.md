@@ -55,20 +55,23 @@ Copy `.env.example` to `.env.local` (both are git-ignored; `npm run dev` picks i
 
 ## Deploying to production
 
-The app is a standard, framework-only Next.js project — no exotic dependencies — so it deploys anywhere Next.js runs.
+The app is a standard, framework-only Next.js project — no exotic dependencies — so it deploys anywhere Next.js runs. One thing drives the hosting choice:
 
-**Self-hosted (recommended for full state persistence).** The stores in `lib/db.js` and `lib/results.js` live on the Node process's `globalThis` (so every route instance and every hot-reload shares one store — this is what keeps the audit view and the dashboard consistent). On a single long-running Node process (`npm run build && npm start`), that state persists for the life of the process and survives API calls reliably:
+**Recommended: Render (or any always-on Node host).** The data stores in `lib/db.js` and `lib/results.js` live on the Node process (on `globalThis`, so every route shares one store). A single long-running process — `npm run build` + `npm start` — is exactly the environment this app is designed for, and it's what Render's free "Web Service" runs:
 
-```bash
-npm run build
-ANTHROPIC_API_KEY=sk-ant-... ANTHROPIC_MODEL=claude-3-5-haiku-20241022 npm start
+```
+New → Web Service → connect your GitHub repo
+Runtime: Node · Plan: Free
+Build command:  npm install && npm run build
+Start command:  npm start
+Environment:    ANTHROPIC_API_KEY, ANTHROPIC_MODEL
 ```
 
-Run it behind a process manager (systemd, `pm2 start npm --name ledgerline -- start`) so the process stays up. This is the mode in which every feature — uploads, the shared history, the side-by-side audit, PO balance bookkeeping — works completely, as designed.
+On an always-on service, history, audit links, PO balance bookkeeping, and duplicate detection all behave exactly like the local app. (Free Render instances sleep after ~15 min of idle: the *first* request after a sleep wakes the process and state resets — run the dashboard once at the start of a demo session to warm it.)
 
-**Vercel (serverless).** Set `ANTHROPIC_API_KEY` (and optionally `ANTHROPIC_MODEL`) in the project's environment variables; the API routes are Node Functions by default and deploy with no config. Because each function runs in an isolated, possibly-fresh instance, the `globalThis` stores are **per-instance**: a single invoice is processed and its audit link works within one warm instance, but history does not reliably survive across separate invocations. That's the honest limit of an in-memory data layer on serverless — if you need durable, cross-request state on Vercel, swap `lib/db.js` / `lib/results.js` for a real database (the module boundaries are already isolated, so it's a contained change).
+**Vercel works, with one caveat:** the API routes run as serverless Node Functions in isolated, possibly-fresh instances, so the process-level stores are per-instance — audit links and history can miss across instances. Fine for a quick share-link demo; not the best fit for this app's state. If you want Vercel with full persistence, swap `lib/db.js` / `lib/results.js` for a real database (module boundaries are already isolated — a contained change).
 
-Either way, the engine logic, extraction, validation rules, and all UI are production-ready; only the data layer's persistence model changes with the hosting choice.
+The engine, extraction, validation rules, and UI are production-ready on any host; only the data layer's persistence model changes with the hosting choice.
 
 ---
 
